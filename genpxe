@@ -1,0 +1,54 @@
+#!/usr/bin/perl -w
+#
+# Author: Ben McClelland
+#
+ 
+my $TEMPLATE="/etc/pxe-template.conf";
+require $TEMPLATE;
+
+$CONFIG="/etc/nodes.conf";
+$PXEPATH="/var/lib/tftpboot";
+
+open(FH, $CONFIG);
+my @buf = <FH>;
+close(FH);
+my @lines = grep { /([0-9A-F]{2}[:-]){5}([0-9A-F]{2})/i } @buf;
+
+my @fields;
+my $macaddr;
+my $pxehwaddr;
+my $ether;
+my $result;
+
+my %macs = ();
+
+foreach my $line (@lines)
+{
+  @fields = split /\s+/, $line;
+  $macaddr = $fields[1];
+  $ether = uc($macaddr);
+  $macaddr =~ s/:/-/g;
+  $pxehwaddr = "01-". lc($macaddr);
+
+  if (exists $macs{$ether})
+  {
+    print "Duplicate MAC found ($ether, node: $fields[0]), skipping...\n";
+  }
+  else
+  {
+    $macs{$ether} = $fields[0];
+
+    $result=gen_pxe($fields[3], $fields[0]);
+    open (DATA, "+>$PXEPATH/pxelinux.cfg/$pxehwaddr") or die "Couldn't open file, $!";
+    print DATA "$result";
+    close(DATA);
+  }
+}
+
+open (DATA, "+>/etc/ethers") or die "Couldn't open file, $!";
+foreach my $value (sort {$macs{$a} cmp $macs{$b} }
+           keys %macs)
+{
+     print DATA "$value $macs{$value}\n";
+}
+close (DATA);
